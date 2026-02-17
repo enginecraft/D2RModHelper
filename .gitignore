@@ -1,5 +1,6 @@
 tools/
 target/
+*.txt
 !**/src/main/resources/tools
 extracted-data/
 !.mvn/wrapper/maven-wrapper.jar

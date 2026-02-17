@@ -85,9 +85,20 @@ public class SkillsUtil {
         List<String[]> rows;
         int reqLevelColumnIndex;
         int maxLevelColumnIndex;
+
+        @Override
+        public String toString() {
+            StringBuilder sb = new StringBuilder();
+            sb.append(String.join("\t", header));
+            rows.forEach(row -> {
+                sb.append("\n");
+                sb.append(String.join("\t", row));
+            });
+            return sb.toString();
+        }
     }
 
     public static void main(String[] args) {
-        buildD2RSkillFile("D:\\Diablo II Resurrected\\mods\\Reimagined\\Reimagined.mpq\\data\\global\\excel", ".", 1, 50);
+        System.out.println(buildD2RSkillFile("D:\\Diablo II Resurrected\\mods\\Reimagined\\Reimagined.mpq\\data\\global\\excel", ".", 1, 50));
     }
 }

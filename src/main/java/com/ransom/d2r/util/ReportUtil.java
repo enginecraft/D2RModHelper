@@ -121,7 +121,7 @@ public class ReportUtil {
         sb.append("<p>");
         sb.append(ReportInfo.DESCRIPTION.replace("\n", "<br>").replace("\t", "* "));
         sb.append("</p>\n");
-        sb.append("<h2>");
+        sb.append("<h2 style=\"margin-bottom: 0;\">");
         sb.append(ReportInfo.RESULTS);
         sb.append("</h2>");
 

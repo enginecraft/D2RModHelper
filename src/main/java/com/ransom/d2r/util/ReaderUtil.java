@@ -10,11 +10,12 @@ import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public class ReaderUtil {
-    public static enum ReportType {HTML, STRING};
+    public enum ReportType {HTML, STRING};
 
     public static List<String[]> readTabFile(Path path) throws IOException {
         List<String[]> rows = new ArrayList<>();
@@ -43,92 +44,95 @@ public class ReaderUtil {
         }
     }
 
-    public static String generateComparisonReport(
+    public static List<ParsedErrors> getComparisonErrors(
             String extractedDir,
-            String modDir,
-            ReportType reportType
-    ) {
-        try {
-            List<String> txtFiles = getAllTxtFilesRelative(
-                    modDir
-            );
+            String modDir
+    ) throws IOException {
+        List<String> txtFiles = getAllTxtFilesRelative(
+                modDir
+        );
 
-            List<ParsedErrors> parsedErrors = new ArrayList<>();
-            Path modPath = Paths.get(modDir);
-            Path extractedPath = Paths.get(extractedDir);
-            for (String txtFile : txtFiles) {
-                Path modTarget = modPath.resolve(txtFile);
-                Path extTarget = extractedPath.resolve(txtFile);
-                if (!Files.exists(extTarget)) {
-                    parsedErrors.add(new ParsedErrors(txtFile, false, null));
-                    continue;
+        List<ParsedErrors> parsedErrors = new ArrayList<>();
+        Path modPath = Paths.get(modDir);
+        Path extractedPath = Paths.get(extractedDir);
+        for (String txtFile : txtFiles) {
+            Path modTarget = modPath.resolve(txtFile);
+            Path extTarget = extractedPath.resolve(txtFile);
+            if (!Files.exists(extTarget)) {
+                parsedErrors.add(new ParsedErrors(txtFile, false, null));
+                continue;
+            }
+            List<String[]> modded = readTabFile(modTarget);
+            List<String[]> extracted = readTabFile(extTarget);
+            List<String> modHeaders = Arrays.asList(modded.getFirst());
+            List<String> extHeaders = Arrays.asList(extracted.getFirst());
+
+            ParsedErrors parsedFile = new ParsedErrors(txtFile, true, extHeaders);
+
+            boolean badHeaders = false;
+            for (String extHeader : extHeaders) {
+                if (!modHeaders.contains(extHeader)) {
+                    parsedFile.missingHeaders.add(extHeader);
+                    badHeaders = true;
                 }
-                List<String[]> modded = readTabFile(modTarget);
-                List<String[]> extracted = readTabFile(extTarget);
-                List<String> modHeaders = Arrays.asList(modded.getFirst());
-                List<String> extHeaders = Arrays.asList(extracted.getFirst());
-
-                ParsedErrors parsedFile = new ParsedErrors(txtFile, true, extHeaders);
-
-                boolean badHeaders = false;
-                for (String extHeader : extHeaders) {
-                    if (!modHeaders.contains(extHeader)) {
-                        parsedFile.missingHeaders.add(extHeader);
-                        badHeaders = true;
-                    }
-                }
-
-                for (String modHeader : modHeaders) {
-                    if (!extHeaders.contains(modHeader)) {
-                        parsedFile.unknownHeaders.add(modHeader);
-                        badHeaders = true;
-                    }
-                }
-
-                if (!badHeaders) {
-                    for (int i = 0; i < extHeaders.size(); i++) {
-                        String extHeader = extHeaders.get(i);
-                        String modHeader = modHeaders.get(i);
-                        if (!extHeader.equals(modHeader)) {
-                            parsedFile.mismatchedHeaders.put(extHeader, modHeader);
-                        }
-                    }
-
-                    for (int i = 1; i < extracted.size(); i++) {
-                        String[] extRow = extracted.get(i);
-                        String key = extRow[0];
-                        boolean found = false;
-                        for (int ii = 1; ii < modded.size(); ii++) {
-                            String[] modRow = modded.get(ii);
-                            if (key.equals(modRow[0])) {
-                                found = true;
-                                for (int iii = 1; iii < modRow.length; iii++) {
-                                    String extVal = extRow[iii];
-                                    String modVal = modRow[iii];
-                                    if (!extVal.equals(modVal)) {
-                                        parsedFile.mismatchedEntries.put(
-                                                String.join("\t", extRow),
-                                                String.join("\t", modRow)
-                                        );
-                                        break;
-                                    }
-                                }
-                                break;
-                            }
-                        }
-
-                        if (!found) {
-                            parsedFile.missingEntries.add(String.join("\t", extRow));
-                        }
-                    }
-                }
-
-                parsedErrors.add(parsedFile);
             }
 
+            for (String modHeader : modHeaders) {
+                if (!extHeaders.contains(modHeader)) {
+                    parsedFile.unknownHeaders.add(modHeader);
+                    badHeaders = true;
+                }
+            }
+
+            if (!badHeaders) {
+                for (int i = 0; i < extHeaders.size(); i++) {
+                    String extHeader = extHeaders.get(i);
+                    String modHeader = modHeaders.get(i);
+                    if (!extHeader.equals(modHeader)) {
+                        parsedFile.mismatchedHeaders.put(extHeader, modHeader);
+                    }
+                }
+
+                for (int i = 1; i < extracted.size(); i++) {
+                    String[] extRow = extracted.get(i);
+                    String key = extRow[0];
+                    boolean found = false;
+                    for (int ii = 1; ii < modded.size(); ii++) {
+                        String[] modRow = modded.get(ii);
+                        if (key.equals(modRow[0])) {
+                            found = true;
+                            for (int iii = 1; iii < modRow.length; iii++) {
+                                String extVal = extRow[iii];
+                                String modVal = modRow[iii];
+                                if (!extVal.equals(modVal)) {
+                                    parsedFile.mismatchedEntries.put(
+                                            String.join("\t", extRow),
+                                            String.join("\t", modRow)
+                                    );
+                                    break;
+                                }
+                            }
+                            break;
+                        }
+                    }
+
+                    if (!found) {
+                        parsedFile.missingEntries.add(String.join("\t", extRow));
+                    }
+                }
+            }
+
+            parsedErrors.add(parsedFile);
+        }
+
+        return parsedErrors;
+    }
+
+    public static String generateReport(List<ParsedErrors> errors, ReportType reportType, String fileName) {
+        try {
             Path outputReport;
             if (reportType.equals(ReportType.STRING)) {
-                outputReport = Paths.get("./D2R_Mod_Diff_Report.txt");
+                outputReport = Paths.get("./" + fileName + ".txt");
                 try (var writer = Files.newBufferedWriter(outputReport)) {
                     StringBuilder sb = new StringBuilder();
                     sb.append("The following is a report generated to list possible issues between an extracted D2R expansion and a mod");
@@ -139,22 +143,20 @@ public class ReaderUtil {
                     sb.append("\n\tMissing Entries - Checks if there are any row entries in the D2R files that are not in the mod file, matching based on first column value");
                     sb.append("\n\tMismatched Entries - Checks if there are any row entries in the D2R files that have a column value different from the mod file");
                     sb.append("\n\nResults:");
-                    parsedErrors.forEach(sb::append);
+                    errors.forEach(sb::append);
                     writer.write(sb.toString());
                 }
-            }
-            else if (reportType.equals(ReportType.HTML)){
-                outputReport = Paths.get("./D2R_Mod_Diff_Report.html");
-                HtmlReportUtil.writeHtmlReport(parsedErrors, outputReport);
-            }
-            else {
+            } else if (reportType.equals(ReportType.HTML)) {
+                outputReport = Paths.get("./" + fileName + ".html");
+                HtmlReportUtil.writeHtmlReport(errors, outputReport);
+            } else {
                 return "Error: Unknown report type";
             }
 
             return "Report written to: " + outputReport.toAbsolutePath();
         }
         catch (Exception e) {
-            return "Error: " + e.getMessage();
+            return "Unable to generate report: " + e.getMessage();
         }
     }
 
@@ -301,8 +303,25 @@ public class ReaderUtil {
 
     public static void main(String[] args) throws IOException {
         String extractedDir = "C:\\Users\\spaul\\git\\D2RModHelper\\extracted-data";
-//        String modDir = "D:\\Diablo II Resurrected\\mods\\Reimagined\\Reimagined.mpq";
-        String modDir = "C:\\D2RMM 1.8.0\\mods\\Eastern_Sun_Resurrected";
-        System.out.println(generateComparisonReport(extractedDir, modDir, ReportType.HTML));
+        List<String> modDirs = List.of(
+                "D:\\Diablo II Resurrected\\mods\\Reimagined\\Reimagined.mpq",
+                "C:\\D2RMM 1.8.0\\mods\\Eastern_Sun_Resurrected"
+        );
+
+        final List<CompletableFuture<Void>> futures = new ArrayList<>();
+        modDirs.forEach(modDir ->
+            futures.add(CompletableFuture.runAsync(() -> {
+                try {
+                    List<ParsedErrors> errors = getComparisonErrors(extractedDir, modDir);
+                    String fileName = modDir.replace("\\", "/");
+                    fileName = fileName.substring(fileName.lastIndexOf("/"));
+                    if (fileName.contains(".")) fileName = fileName.substring(0, fileName.indexOf("."));
+                    System.out.println(generateReport(errors, ReportType.HTML, fileName));
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
+            }))
+        );
+        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
     }
 }

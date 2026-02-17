@@ -10,42 +10,51 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 public class ExperienceUtil {
-    public static List<BigInteger> getProgression(int maxCount, BigInteger maxVal, BigInteger minVal, double difficulty) {
+    public static final int MAX_LEVEL_LIMIT = 127;
+    public static final BigInteger MAX_XP_PER_LEVEL =  new BigInteger("4000000000");
+    public static final BigInteger MIN_VAL = new BigInteger("1");
+    public static final int MAX_EXP_RATIO = 1024;
+
+    private static List<BigInteger> getProgression(int maxCount, BigInteger maxVal, BigInteger minVal, int offset, double difficulty, boolean reverse) {
         if (difficulty > 1) difficulty = 1;
-        if (difficulty <= 0) difficulty = 0.01;
+        if (difficulty <= 0) difficulty = 0.0001;
         if (maxCount < 1) maxCount = 1;
+        else if (maxCount > MAX_LEVEL_LIMIT) maxCount = MAX_LEVEL_LIMIT;
+        if (maxVal.compareTo(MIN_VAL) < 0) maxVal = MIN_VAL;
+        if (minVal.compareTo(MIN_VAL) < 0) minVal = MIN_VAL;
+        if (minVal.compareTo(maxVal) > 0) minVal = maxVal;
+        if (offset < 1) offset = 1;
+        if (offset > MAX_LEVEL_LIMIT) offset = MAX_LEVEL_LIMIT;
 
         List<BigInteger> progression = new ArrayList<>();
 
-        BigDecimal initialXP = new BigDecimal(minVal)
+        BigDecimal initialAmount = new BigDecimal(reverse ? maxVal : minVal)
                 .multiply(BigDecimal.valueOf(difficulty));
 
-        BigDecimal finalXP = new BigDecimal(maxVal)
+        BigDecimal finalAmount = new BigDecimal(reverse ? minVal : maxVal)
                 .multiply(BigDecimal.valueOf(difficulty));
-
-        if (maxCount == 1) {
-            progression.add(finalXP.setScale(0, RoundingMode.HALF_UP).toBigInteger());
-            return progression;
-        }
 
         MathContext mc = new MathContext(20, RoundingMode.HALF_UP);
 
         double ratio = Math.pow(
-                finalXP.divide(initialXP, mc).doubleValue(),
-                1.0 / (maxCount - 1)
+                finalAmount.divide(initialAmount, mc).doubleValue(),
+                1.0 / (maxCount - offset)
         );
 
         for (int level = 1; level <= maxCount; level++) {
+            if (level < offset) {
+                progression.add(initialAmount.toBigInteger());
+                continue;
+            }
 
-            double xp = initialXP.doubleValue() * Math.pow(ratio, level - 1);
-
-            BigDecimal xpValue = BigDecimal.valueOf(xp)
+            double req = initialAmount.doubleValue() * Math.pow(ratio, level - offset);
+            BigDecimal reqValue = BigDecimal.valueOf(req)
                     .setScale(0, RoundingMode.HALF_UP);
-
-            progression.add(xpValue.toBigInteger());
+            progression.add(reqValue.toBigInteger());
         }
 
         return progression;
@@ -54,15 +63,25 @@ public class ExperienceUtil {
     public static ExperienceData buildD2RExperienceFile(
             String extractedDir,
             String outputDir,
-            int numOfLevels,
+            int maxLevel,
+            BigInteger maxXpPerLevel,
+            BigInteger minXpPerLevel,
+            int maxExpRatio,
+            int minExpRatio,
+            int expRatioPenaltyOffset,
             double difficulty
     ) {
         try {
             Path extracted = Paths.get(extractedDir);
             Path output = Paths.get(outputDir);
 
-            List<BigInteger> lvlProgression = getProgression(numOfLevels, new BigInteger("4000000000"), new BigInteger("500"), difficulty);
-            List<BigInteger> expRatioProgression = getProgression(numOfLevels, new BigInteger("1024"), new BigInteger("1"), 1);
+            if (maxXpPerLevel.compareTo(MAX_XP_PER_LEVEL) > 0) maxXpPerLevel = MAX_XP_PER_LEVEL;
+            if (minXpPerLevel.compareTo(MAX_XP_PER_LEVEL) > 0) minXpPerLevel = MAX_XP_PER_LEVEL;
+            if (maxExpRatio > MAX_EXP_RATIO) maxExpRatio = MAX_EXP_RATIO;
+            if (minExpRatio > MAX_EXP_RATIO) minExpRatio = MAX_EXP_RATIO;
+
+            List<BigInteger> lvlProgression = getProgression(maxLevel, maxXpPerLevel, minXpPerLevel, 1, difficulty, false);
+            List<BigInteger> expRatioProgression = getProgression(maxLevel, new BigInteger("" + maxExpRatio), new BigInteger("" + minExpRatio), expRatioPenaltyOffset, 1, true);
             ExperienceData expData = loadExperienceData(extracted, CharStatsUtil.loadClassNames(extracted), lvlProgression, expRatioProgression);
 
             writeExperienceFile(output, expData);
@@ -124,10 +143,10 @@ public class ExperienceUtil {
         if (lvlProgressionOverride != null && expRatioProgressionOverride != null) {
             if (data.levelZeroRow == null) throw new RuntimeException("Unable to find row zero in experience.txt");
 
-            for (int level = 1; level < lvlProgressionOverride.size(); level++) {
+            for (int level = 1; level <= lvlProgressionOverride.size(); level++) {
                 String[] newRow = data.levelZeroRow.clone();
                 newRow[data.levelColumnIndex] = String.valueOf(level);
-                newRow[newRow.length - 1] = (new BigInteger("1024")).subtract(expRatioProgressionOverride.get(level - 1)).toString();
+                newRow[newRow.length - 1] = expRatioProgressionOverride.get(level - 1).toString();
 
                 for (int col = 0; col < data.header.length; col++) {
                     String columnName = data.header[col];
@@ -148,9 +167,20 @@ public class ExperienceUtil {
         List<String[]> rows;
         int levelColumnIndex;
         String[] levelZeroRow;
+
+        @Override
+        public String toString() {
+            StringBuilder sb = new StringBuilder();
+            sb.append(String.join("\t", header));
+            rows.forEach(row -> {
+                sb.append("\n");
+                sb.append(String.join("\t", row));
+            });
+            return sb.toString();
+        }
     }
 
     public static void main(String[] args) {
-        buildD2RExperienceFile("C:\\Users\\spaul\\git\\D2RModHelper\\extracted-data\\data\\global\\excel", ".", 1000, .1);
+        System.out.println(buildD2RExperienceFile("C:\\Users\\spaul\\git\\D2RModHelper\\extracted-data\\data\\global\\excel", ".", 1000, new BigInteger("4000000000"), new BigInteger("500"), 1024, 5, 69, 1));
     }
 }

@@ -1,6 +1,7 @@
 package com.ransom.d2r.util;
 
-import java.io.BufferedWriter;
+import com.ransom.d2r.objects.FileInfo;
+
 import java.io.IOException;
 import java.nio.file.*;
 import java.util.*;
@@ -23,18 +24,16 @@ public class MonLvlUtil {
     private static final double XP_K = 2.0;
     private static final double XP_ALPHA = 0.020;
 
-    public static void buildMonLvlFile(String extractedDir, String outputDir) throws IOException {
-
+    public static void generate(String extractedDir, String outputDir) throws IOException {
         Path input = Paths.get(extractedDir, "monlvl.txt");
         Path output = Paths.get(outputDir, "monlvl.txt");
 
-        List<String[]> rows = ReaderUtil.readTabFile(input);
-        String[] header = rows.getFirst();
+        List<String[]> rows = ScannerUtil.scanFile(input);
+        String[] headers = rows.getFirst();
 
-        Map<String, Integer> colIndex = buildIndex(header);
+        Map<String, Integer> colIndex = buildIndex(headers);
 
         List<String[]> newRows = new ArrayList<>();
-        newRows.add(header);
 
         // Preserve vanilla 1–85 exactly
         for (int i = 1; i < rows.size(); i++) {
@@ -51,7 +50,7 @@ public class MonLvlUtil {
 
         for (int level = VANILLA_PRESERVE_UNTIL + 1; level <= MAX_LEVEL; level++) {
 
-            String[] newRow = new String[header.length];
+            String[] newRow = new String[headers.length];
             newRow[0] = String.valueOf(level);
 
             double hp = tapered(level, refHP, HP_K, HP_ALPHA);
@@ -79,7 +78,7 @@ public class MonLvlUtil {
             newRows.add(newRow);
         }
 
-        write(output, newRows);
+        WriteUtil.writeFile(output, new FileInfo(headers, newRows));
     }
 
     private static double tapered(int level, double ref, double k, double alpha) {
@@ -106,22 +105,6 @@ public class MonLvlUtil {
             map.put(header[i], i);
         }
         return map;
-    }
-
-    private static void write(Path output, List<String[]> rows) throws IOException {
-        try (BufferedWriter bw = Files.newBufferedWriter(output)) {
-            for (String[] row : rows) {
-                bw.write(String.join("\t", row));
-                bw.newLine();
-            }
-        }
-    }
-
-    public static void main(String[] args) throws IOException {
-        buildMonLvlFile(
-                "C:\\Users\\spaul\\git\\D2RModHelper\\extracted-data\\data\\global\\excel",
-                "."
-        );
     }
 }
 

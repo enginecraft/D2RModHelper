@@ -1,24 +1,27 @@
 package com.ransom.d2r.util;
 
-import java.io.BufferedWriter;
+import com.ransom.d2r.objects.FileInfo;
+import com.ransom.d2r.objects.PortalDefinition;
+
 import java.io.IOException;
 import java.nio.file.*;
 import java.util.*;
 
 public class LevelsUtil {
-    public static void buildLevelsFile(String extractedDir, String outputDir,
-                                       List<PortalDefinition> newPortals,
-                                       double densityMultiplier) throws IOException {
-
+    public static void generate(
+            String extractedDir,
+            String outputDir,
+            List<PortalDefinition> newPortals,
+            double densityMultiplier
+    ) throws IOException {
         Path input = Paths.get(extractedDir, "levels.txt");
         Path output = Paths.get(outputDir, "levels.txt");
 
-        List<String[]> rows = ReaderUtil.readTabFile(input);
-        String[] header = rows.getFirst();
-        Map<String, Integer> colIndex = buildIndex(header);
+        List<String[]> rows = ScannerUtil.scanFile(input);
+        String[] headers = rows.getFirst();
+        Map<String, Integer> colIndex = buildIndex(headers);
 
         List<String[]> newRows = new ArrayList<>();
-        newRows.add(header);
 
         for (int i = 1; i < rows.size(); i++) {
             String[] row = rows.get(i).clone();
@@ -27,7 +30,7 @@ public class LevelsUtil {
         }
 
         for (PortalDefinition portal : newPortals) {
-            String[] newRow = new String[header.length];
+            String[] newRow = new String[headers.length];
             Arrays.fill(newRow, "0");
 
             newRow[colIndex.get("Name")] = portal.name;
@@ -48,7 +51,7 @@ public class LevelsUtil {
             newRows.add(newRow);
         }
 
-        write(output, newRows);
+        WriteUtil.writeFile(output, new FileInfo(headers, newRows));
     }
 
     private static void multiplyDensity(String[] row, Map<String, Integer> idx, double multiplier) {
@@ -78,52 +81,5 @@ public class LevelsUtil {
         Map<String,Integer> map = new HashMap<>();
         for (int i = 0; i < header.length; i++) map.put(header[i], i);
         return map;
-    }
-
-    private static void write(Path output, List<String[]> rows) throws IOException {
-        try (BufferedWriter bw = Files.newBufferedWriter(output)) {
-            for (String[] row : rows) {
-                bw.write(String.join("\t", row));
-                bw.newLine();
-            }
-        }
-    }
-
-    public static class PortalDefinition {
-        public String name;
-        public int normalLevel;
-        public int nightmareLevel;
-        public int hellLevel;
-        public int numMonsters;
-        public int monDen;
-
-        public PortalDefinition(String name, int normalLevel, int nightmareLevel, int hellLevel) {
-            this.name = name;
-            this.normalLevel = normalLevel;
-            this.nightmareLevel = nightmareLevel;
-            this.hellLevel = hellLevel;
-            this.numMonsters = -1;
-            this.monDen = -1;
-        }
-    }
-
-    public static void main(String[] args) throws IOException {
-        List<PortalDefinition> newPortals = new ArrayList<>();
-//        for (int i = 0; i < 9; i++) {
-//            int baseLvl = 101 + i*3;
-//            newPortals.add(new PortalDefinition(
-//                    "EndgamePortal" + (i+1),
-//                    baseLvl,
-//                    baseLvl+1,
-//                    baseLvl+2
-//            ));
-//        }
-
-        buildLevelsFile(
-                "C:\\Users\\spaul\\git\\D2RModHelper\\extracted-data\\data\\global\\excel",
-                ".",
-                newPortals,
-                10
-        );
     }
 }

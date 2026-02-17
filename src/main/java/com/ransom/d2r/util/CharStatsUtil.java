@@ -8,7 +8,7 @@ import java.util.List;
 public class CharStatsUtil {
     public static List<String> loadClassNames(Path extractedDir) throws IOException {
         Path charStatsPath = extractedDir.resolve("charstats.txt");
-        List<String[]> rows = ReaderUtil.readTabFile(charStatsPath);
+        List<String[]> rows = ScannerUtil.scanFile(charStatsPath);
 
         String[] header = rows.getFirst();
         int classIndex = -1;

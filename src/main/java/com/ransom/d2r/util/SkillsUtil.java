@@ -1,57 +1,34 @@
 package com.ransom.d2r.util;
 
-import java.io.BufferedWriter;
+import com.ransom.d2r.objects.SkillsData;
+
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 
 public class SkillsUtil {
-    private static SkillsData buildD2RSkillFile(
+    public static SkillsData generate(
             String extractedDir,
             String outputDir,
             int requiredLevelOverride,
             int maxLevelOverride
-    ) {
-        try {
-            Path extracted = Paths.get(extractedDir);
-            Path output = Paths.get(outputDir);
-            SkillsData data = loadSkillData(extracted, requiredLevelOverride, maxLevelOverride);
-            writeSkillFile(output, data);
-            return data;
-        } catch (IOException e) {
-            throw new RuntimeException("Failed building skills.txt", e);
-        }
-    }
-
-    private static void writeSkillFile(
-            Path outputDir,
-            SkillsData data
     ) throws IOException {
-        Path outputPath = outputDir.resolve("skills.txt");
-
-        try (BufferedWriter bw = Files.newBufferedWriter(outputPath)) {
-            bw.write(String.join("\t", data.header));
-            bw.newLine();
-
-            for (String[] row : data.rows) {
-                bw.write(String.join("\t", row));
-                bw.newLine();
-            }
-        }
+        Path extracted = Paths.get(extractedDir);
+        Path output = Paths.get(outputDir);
+        SkillsData data = loadSkillData(extracted, requiredLevelOverride, maxLevelOverride);
+        WriteUtil.writeFile(output.resolve("skills.txt"), data);
+        return data;
     }
 
     private static SkillsData loadSkillData(Path extractedDir, int requiredLevelOverride, int maxLevelOverride) throws IOException {
         Path expPath = extractedDir.resolve("skills.txt");
-        List<String[]> all = ReaderUtil.readTabFile(expPath);
+        List<String[]> all = ScannerUtil.scanFile(expPath);
+        SkillsData data = new SkillsData(all.getFirst(), new ArrayList<>());
 
-        SkillsData data = new SkillsData();
-        data.header = all.getFirst();
-
-        for (int i = 0; i < data.header.length; i++) {
-            switch (data.header[i]) {
+        for (int i = 0; i < data.headers.length; i++) {
+            switch (data.headers[i]) {
                 case "reqlevel":
                     data.reqLevelColumnIndex = i;
                     break;
@@ -61,7 +38,6 @@ public class SkillsUtil {
             }
         }
 
-        data.rows = new ArrayList<>();
         for (int i = 1; i < all.size(); i++) {
             String[] row = all.get(i);
 
@@ -78,27 +54,5 @@ public class SkillsUtil {
         }
 
         return data;
-    }
-
-    public static class SkillsData {
-        String[] header;
-        List<String[]> rows;
-        int reqLevelColumnIndex;
-        int maxLevelColumnIndex;
-
-        @Override
-        public String toString() {
-            StringBuilder sb = new StringBuilder();
-            sb.append(String.join("\t", header));
-            rows.forEach(row -> {
-                sb.append("\n");
-                sb.append(String.join("\t", row));
-            });
-            return sb.toString();
-        }
-    }
-
-    public static void main(String[] args) {
-        System.out.println(buildD2RSkillFile("D:\\Diablo II Resurrected\\mods\\Reimagined\\Reimagined.mpq\\data\\global\\excel", ".", 1, 50));
     }
 }

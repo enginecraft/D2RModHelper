@@ -1,12 +1,12 @@
 package com.ransom.d2r.util;
 
-import java.io.BufferedWriter;
+import com.ransom.d2r.objects.ExperienceData;
+
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.math.MathContext;
 import java.math.RoundingMode;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
@@ -59,7 +59,7 @@ public class ExperienceUtil {
         return progression;
     }
 
-    public static ExperienceData buildD2RExperienceFile(
+    public static ExperienceData generate(
             String extractedDir,
             String outputDir,
             int maxLevel,
@@ -83,44 +83,26 @@ public class ExperienceUtil {
             List<BigInteger> expRatioProgression = getProgression(maxLevel, new BigInteger("" + maxExpRatio), new BigInteger("" + minExpRatio), expRatioPenaltyOffset, 1, true);
             ExperienceData expData = loadExperienceData(extracted, CharStatsUtil.loadClassNames(extracted), lvlProgression, expRatioProgression);
 
-            writeExperienceFile(output, expData);
+            WriteUtil.writeFile(output.resolve("experience.txt"), expData);
             return expData;
         } catch (IOException e) {
             throw new RuntimeException("Failed building experience.txt", e);
         }
     }
 
-    private static void writeExperienceFile(
-            Path outputDir,
-            ExperienceData expData
-    ) throws IOException {
-        Path outputPath = outputDir.resolve("experience.txt");
-        try (BufferedWriter bw = Files.newBufferedWriter(outputPath)) {
-            bw.write(String.join("\t", expData.header));
-            bw.newLine();
-
-            for (String[] row : expData.rows) {
-                bw.write(String.join("\t", row));
-                bw.newLine();
-            }
-        }
-    }
-
     private static ExperienceData loadExperienceData(Path extractedDir, List<String> classes, List<BigInteger> lvlProgressionOverride, List<BigInteger> expRatioProgressionOverride) throws IOException {
         Path expPath = extractedDir.resolve("experience.txt");
-        List<String[]> rows = ReaderUtil.readTabFile(expPath);
+        List<String[]> rows = ScannerUtil.scanFile(expPath);
 
         int numOfClasses = classes.size();
-        ExperienceData data = new ExperienceData();
-        data.header = rows.getFirst();
+        ExperienceData data = new ExperienceData(rows.getFirst(), new ArrayList<>());
 
-        for (int i = 0; i < data.header.length; i++) {
-            if (data.header[i].equals("level")) {
+        for (int i = 0; i < data.headers.length; i++) {
+            if (data.headers[i].equals("level")) {
                 data.levelColumnIndex = i;
             }
         }
 
-        data.rows = new ArrayList<>();
         boolean maxLvlFound = false;
 
         for (int i = 1; i < rows.size(); i++) {
@@ -154,8 +136,8 @@ public class ExperienceUtil {
                 newRow[data.levelColumnIndex] = String.valueOf(level);
                 newRow[newRow.length - 1] = expRatioProgressionOverride.get(level - 1).toString();
 
-                for (int col = 0; col < data.header.length; col++) {
-                    String columnName = data.header[col];
+                for (int col = 0; col < data.headers.length; col++) {
+                    String columnName = data.headers[col];
                     if (classes.contains(columnName)) {
                         newRow[col] = lvlProgressionOverride.get(level - 1).toString();
                     }
@@ -166,27 +148,5 @@ public class ExperienceUtil {
         }
 
         return data;
-    }
-
-    public static class ExperienceData {
-        String[] header;
-        List<String[]> rows;
-        int levelColumnIndex;
-        String[] levelZeroRow;
-
-        @Override
-        public String toString() {
-            StringBuilder sb = new StringBuilder();
-            sb.append(String.join("\t", header));
-            rows.forEach(row -> {
-                sb.append("\n");
-                sb.append(String.join("\t", row));
-            });
-            return sb.toString();
-        }
-    }
-
-    public static void main(String[] args) {
-        System.out.println(buildD2RExperienceFile("C:\\Users\\spaul\\git\\D2RModHelper\\extracted-data\\data\\global\\excel", ".", 1000, new BigInteger("4000000000"), new BigInteger("500"), 1024, 5, 69, 1));
     }
 }

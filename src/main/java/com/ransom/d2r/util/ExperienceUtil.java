@@ -10,7 +10,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 
 public class ExperienceUtil {
@@ -120,7 +119,9 @@ public class ExperienceUtil {
                 data.levelColumnIndex = i;
             }
         }
+
         data.rows = new ArrayList<>();
+        boolean maxLvlFound = false;
 
         for (int i = 1; i < rows.size(); i++) {
             String[] row = rows.get(i);
@@ -130,6 +131,7 @@ public class ExperienceUtil {
                     for (int ii = 1; ii < numOfClasses; ii++) {
                         row[ii] = maxLevel + "";
                     }
+                    maxLvlFound = true;
                 }
                 else if ("0".equals(row[data.levelColumnIndex])) {
                     data.levelZeroRow = row;
@@ -140,8 +142,12 @@ public class ExperienceUtil {
             data.rows.add(row);
         }
 
+        if (!maxLvlFound) {
+            throw new IllegalStateException("No 'MaxLvl' column found in experience.txt");
+        }
+
         if (lvlProgressionOverride != null && expRatioProgressionOverride != null) {
-            if (data.levelZeroRow == null) throw new RuntimeException("Unable to find row zero in experience.txt");
+            if (data.levelZeroRow == null) throw new IllegalArgumentException("Unable to level zero row in experience.txt");
 
             for (int level = 1; level <= lvlProgressionOverride.size(); level++) {
                 String[] newRow = data.levelZeroRow.clone();
